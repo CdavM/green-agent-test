@@ -68,16 +68,10 @@ Go to [agentbeats.dev](https://agentbeats.dev), click 'Create Agent', and fill i
 
     Agentbeats will automatically monitor your repository for changes and index new score data. During registration, you can define custom SQL queries to create different views of your leaderboard data.
 
-7. **Add baseline scores**
+7. **Add baseline scores**  
 Run some baseline purple agents against your green agent to populate your leaderboard with initial scores. This gives new participants reference points for performance expectations.
 
-   To add baseline scores:
-   - Checkout a new branch from main
-   - Complete the participant fields in `scenario.toml` with purple agent details
-   - Configure GitHub Secrets (Settings > Secrets and variables > Actions) for any `${VARIABLE_NAME}` references in your `scenario.toml`. 
-     - If using private Docker images: Add a `GHCR_TOKEN` secret with a Personal Access Token that has `read:packages` scope and access to the required packages
-   - Commit and push your changes to trigger the assessment workflow
-   - The workflow will automatically run the assessment and create a PR with the results
+    To create submissions on your own leaderboard, follow the [submission instructions](#running-an-assessment-and-submitting-scores) but work directly on a new branch in your repository instead of forking it.
 
 ## Running an assessment and submitting scores
 
@@ -113,7 +107,7 @@ Set up secrets as GitHub repository secrets:
    - Go to your fork's Settings > Secrets and variables > Actions > New repository secret
    - Add each secret referenced with `${VARIABLE_NAME}` in `scenario.toml` (both green agent and participant secrets)
    - The scenario runner workflow automatically substitutes these values when running the assessment
-   - If using private Docker images: Add a `GHCR_TOKEN` secret with a Personal Access Token that has `read:packages` scope and access to the required packages
+   - If using private Docker images: Add a `GHCR_TOKEN` secret with a Personal Access Token (PAT) that has `read:packages` scope and access to the required packages. Create a PAT at https://github.com/settings/tokens
 
 7. **Create a submission**  
 Commit and push your changes to trigger the assessment workflow:
