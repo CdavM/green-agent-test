@@ -1,22 +1,10 @@
-#!/usr/bin/env python3
-"""
-Generate Docker Compose configuration from green-agent TOML specification.
-
-This script reads a green-agent.toml file and generates:
-1. docker-compose.yml - Docker Compose configuration
-2. .env.example - Example environment variables file
-
-Usage:
-    python generate_compose.py <path-to-toml> [--output-dir <dir>]
-
-Example:
-    python generate_compose.py sample-debate-green-agent/green-agent.toml
-"""
+"""Generate Docker Compose configuration from scenario.toml"""
 
 import argparse
+import re
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 try:
     import tomli
@@ -24,389 +12,215 @@ except ImportError:
     try:
         import tomllib as tomli
     except ImportError:
-        print("Error: tomli or tomllib module required. Install with: pip install tomli")
+        print("Error: tomli required. Install with: pip install tomli")
         sys.exit(1)
 
 
-def parse_toml(toml_path: Path) -> Dict[str, Any]:
-    """Parse the TOML configuration file."""
-    try:
-        with open(toml_path, "rb") as f:
-            return tomli.load(f)
-    except Exception as e:
-        print(f"Error parsing TOML file: {e}")
-        sys.exit(1)
+COMPOSE_PATH = "docker-compose.yml"
+A2A_SCENARIO_PATH = "a2a-scenario.toml"
+ENV_PATH = ".env.example"
+
+DEFAULT_PORT = 9009
+
+COMPOSE_TEMPLATE = """# Auto-generated from scenario.toml
+
+services:
+  green-agent:
+    image: {green_image}
+    container_name: green-agent
+    command: ["--host", "0.0.0.0", "--port", "{green_port}", "--card-url", "http://green-agent:{green_port}"]
+    environment:{green_env}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:{green_port}/.well-known/agent-card.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    depends_on:{green_depends}
+    networks:
+      - agent-network
+
+{participant_services}
+  agentbeats-client:
+    image: ghcr.io/oasislabs/agentbeats-client:v1.0.0
+    container_name: agentbeats-client
+    volumes:
+      - ./a2a-scenario.toml:/app/scenario.toml
+      - ./output:/app/output
+    command: ["scenario.toml", "output/results.json"]
+    depends_on:{client_depends}
+    networks:
+      - agent-network
+
+networks:
+  agent-network:
+    driver: bridge
+"""
+
+PARTICIPANT_TEMPLATE = """  {name}:
+    image: {image}
+    container_name: {name}
+    command: ["--host", "0.0.0.0", "--port", "{port}", "--card-url", "http://{name}:{port}"]
+    environment:{env}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:{port}/.well-known/agent-card.json"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 30s
+    networks:
+      - agent-network
+"""
+
+A2A_SCENARIO_TEMPLATE = """[green_agent]
+endpoint = "http://green-agent:{green_port}"
+agentbeats_id = "{green_id}"
+
+{participants}
+{config}"""
 
 
-def validate_config(config: Dict[str, Any]) -> None:
-    """Validate that required fields are present in the config."""
-    required_fields = ["green_agent"]
-    for field in required_fields:
-        if field not in config:
-            print(f"Error: Required field '{field}' not found in TOML")
+def parse_scenario(scenario_path: Path) -> dict[str, Any]:
+    toml_data = scenario_path.read_text()
+    data = tomli.loads(toml_data)
+
+    participants = data.get("participants", [])
+    for participant in participants:
+        if "agentbeats_id" not in participant:
+            print(f"Error: Participant '{participant.get('name', 'unknown')}' is missing 'agentbeats_id' field")
             sys.exit(1)
 
-    green_agent = config["green_agent"]
-    required_green_fields = ["image", "port"]
-    for field in required_green_fields:
-        if field not in green_agent:
-            print(f"Error: Required field 'green_agent.{field}' not found in TOML")
-            sys.exit(1)
-
-    # Validate participants
-    participants = config.get("participants", {})
-    required_roles = participants.get("required_roles", [])
-
-    if len(required_roles) < 1:
-        print("Error: At least one participant role is required")
-        sys.exit(1)
-
-    for i, role in enumerate(required_roles):
-        required_role_fields = ["name", "image", "port"]
-        for field in required_role_fields:
-            if field not in role:
-                print(f"Error: Required field 'participants.required_roles[{i}].{field}' not found in TOML")
-                sys.exit(1)
+    return data
 
 
-def generate_docker_compose(config: Dict[str, Any]) -> str:
-    """Generate Docker Compose YAML content from config."""
-    green_agent = config["green_agent"]
-    participants = config.get("participants", {})
-    required_roles = participants.get("required_roles", [])
-
-    # Start building compose file
-    lines = [
-        "# Auto-generated Docker Compose file from scenario.toml",
-        "# Do not edit manually - regenerate using generate_compose.py",
-        "",
-        "version: '3.8'",
-        "",
-        "services:",
-    ]
-
-    # Green agent service
-    lines.extend([
-        "  green-agent:",
-        f"    image: {green_agent['image']}",
-        f"    container_name: green-agent",
-        f"    command: [\"--host\", \"0.0.0.0\", \"--port\", \"{green_agent['port']}\", \"--card-url\", \"http://green-agent:{green_agent['port']}\"]",
-        "    healthcheck:",
-        f"      test: [\"CMD\", \"python\", \"-c\", \"import urllib.request; urllib.request.urlopen('http://localhost:{green_agent['port']}/.well-known/agent-card.json')\"]",
-        "      interval: 5s",
-        "      timeout: 3s",
-        "      retries: 10",
-        "      start_period: 30s",
-    ])
-
-    # Green agent environment variables
-    green_env = green_agent.get("environment", [])
-    if green_env:
-        lines.append("    environment:")
-        for var in green_env:
-            var_name = var["name"]
-            if "default" in var:
-                lines.append(f"      - {var_name}={var['default']}")
-            else:
-                # Required secret - use environment variable substitution
-                lines.append(f"      - {var_name}=${{{var_name}}}")
-
-    # Dependencies on participant services
-    if required_roles:
-        lines.append("    depends_on:")
-        for role in required_roles:
-            lines.append(f"      - {role['name']}")
-
-    # Network
-    lines.extend([
-        "    networks:",
-        "      - agent-network",
-        "",
-    ])
-
-    # Participant services
-    for role in required_roles:
-        role_name = role["name"]
-        role_image = role["image"]
-        role_port = role["port"]
-
-        lines.extend([
-            f"  {role_name}:",
-            f"    image: {role_image}",
-            f"    container_name: {role_name}",
-            f"    command: [\"--host\", \"0.0.0.0\", \"--port\", \"{role_port}\", \"--card-url\", \"http://{role_name}:{role_port}\"]",
-            "    healthcheck:",
-            f"      test: [\"CMD\", \"python\", \"-c\", \"import urllib.request; urllib.request.urlopen('http://localhost:{role_port}/.well-known/agent-card.json')\"]",
-            "      interval: 5s",
-            "      timeout: 3s",
-            "      retries: 10",
-            "      start_period: 30s",
-        ])
-
-        # Participant environment variables
-        role_env = role.get("environment", [])
-        if role_env:
-            lines.append("    environment:")
-            for var in role_env:
-                var_name = var["name"]
-                if "default" in var:
-                    lines.append(f"      - {var_name}={var['default']}")
-                else:
-                    lines.append(f"      - {var_name}=${{{var_name}}}")
-
-        lines.extend([
-            "    networks:",
-            "      - agent-network",
-            "",
-        ])
-
-    # Collect all service names for runner dependencies
-    all_services = ["green-agent"] + [role["name"] for role in required_roles]
-
-    # AgentBeats runner service
-    lines.extend([
-        # TODO Change this line to the public image once it is set
-        "  agentbeats-runner:",
-        "    image: ghcr.io/komyo-ai/agentbeats-runner:latest",
-        "    container_name: agentbeats-runner",
-        "    volumes:",
-        "      - ./runner-scenario.toml:/scenario/scenario.toml",
-        "      - ./output:/app/output",
-        "    command: [\"/scenario/scenario.toml\", \"/app/output/score.json\"]",
-        "    depends_on:",
-    ])
-    for service in all_services:
-        lines.extend([
-            f"      {service}:",
-            "        condition: service_healthy",
-        ])
-    lines.extend([
-        "    networks:",
-        "      - agent-network",
-        "",
-    ])
-
-    # Networks definition
-    lines.extend([
-        "networks:",
-        "  agent-network:",
-        "    driver: bridge",
-        "",
-    ])
-
-    return "\n".join(lines)
-
-
-def generate_env_example(config: Dict[str, Any]) -> str:
-    """Generate .env.example content from config."""
-    green_agent = config["green_agent"]
-    participants = config.get("participants", {})
-    required_roles = participants.get("required_roles", [])
-
-    lines = [
-        "# Environment variables for agents",
-        "# Copy this file to .env and fill in the required values",
-        "",
-    ]
-
-    # Collect all environment variables from all agents
-    all_required_vars = []
-    all_optional_with_defaults = []
-
-    # Green agent env vars
-    green_env = green_agent.get("environment", [])
-    for var in green_env:
-        if "default" in var:
-            all_optional_with_defaults.append(("green-agent", var))
-        else:
-            all_required_vars.append(("green-agent", var))
-
-    # Participant env vars
-    for role in required_roles:
-        role_env = role.get("environment", [])
-        for var in role_env:
-            if "default" in var:
-                all_optional_with_defaults.append((role["name"], var))
-            else:
-                all_required_vars.append((role["name"], var))
-
-    # Required variables (secrets)
-    if all_required_vars:
-        lines.append("# Required variables (no defaults)")
-        for agent_name, var in all_required_vars:
-            var_name = var["name"]
-            lines.append(f"# {agent_name}")
-            lines.append(f"{var_name}=")
-        lines.append("")
-
-    # Optional variables with defaults
-    if all_optional_with_defaults:
-        lines.append("# Optional variables (defaults are set in docker-compose.yml)")
-        for agent_name, var in all_optional_with_defaults:
-            var_name = var["name"]
-            default = var["default"]
-            lines.append(f"# {agent_name}: {var_name}={default}")
-        lines.append("")
-
-    return "\n".join(lines)
-
-
-def generate_runner_scenario(config: Dict[str, Any]) -> str:
-    """Generate runner scenario.toml with URLs instead of images/ports."""
-    green_agent = config["green_agent"]
-    participants = config.get("participants", {})
-    required_roles = participants.get("required_roles", [])
+def format_env_vars(env_dict: dict) -> str:
+    if not env_dict:
+        return " []"
 
     lines = []
+    for key, value in env_dict.items():
+        lines.append(f"      - {key}={value}")
 
-    # Green agent with URL
-    lines.append("[green_agent]")
-    lines.append(f"endpoint = \"http://green-agent:{green_agent['port']}\"")
+    return "\n" + "\n".join(lines)
 
-    # Copy additional green agent fields (excluding known Docker-specific fields)
-    docker_specific_keys = {"image", "port", "environment"}
-    for key, value in green_agent.items():
-        if key not in docker_specific_keys:
-            if isinstance(value, str):
-                lines.append(f"{key} = \"{value}\"")
-            elif isinstance(value, bool):
-                lines.append(f"{key} = {str(value).lower()}")
-            elif isinstance(value, (int, float)):
-                lines.append(f"{key} = {value}")
-            elif isinstance(value, list):
-                lines.append(f"{key} = {value}")
 
-    # Copy green agent environment variables if present
-    green_env = green_agent.get("environment", [])
-    if green_env:
-        lines.append("")
-        for var in green_env:
-            lines.append("[[green_agent.environment]]")
-            lines.append(f"name = \"{var['name']}\"")
-            if "default" in var:
-                lines.append(f"default = \"{var['default']}\"")
+def format_depends_on(services: list) -> str:
+    lines = []
+    for service in services:
+        lines.append(f"      {service}:")
+        lines.append(f"        condition: service_healthy")
+    return "\n" + "\n".join(lines)
 
-    lines.append("")
 
-    # Participants with URLs - use flat structure expected by client_cli.py
-    for role in required_roles:
-        lines.append("[[participants]]")
-        lines.append(f"role = \"{role['name']}\"")
-        lines.append(f"endpoint = \"http://{role['name']}:{role['port']}\"")
+def generate_docker_compose(scenario: dict[str, Any]) -> str:
+    green = scenario["green_agent"]
+    participants = scenario.get("participants", [])
 
-        # Copy additional participant fields (excluding known Docker-specific fields)
-        participant_docker_keys = {"name", "image", "port", "environment"}
-        for key, value in role.items():
-            if key not in participant_docker_keys:
-                if isinstance(value, str):
-                    lines.append(f"{key} = \"{value}\"")
-                elif isinstance(value, bool):
-                    lines.append(f"{key} = {str(value).lower()}")
-                elif isinstance(value, (int, float)):
-                    lines.append(f"{key} = {value}")
-                elif isinstance(value, list):
-                    lines.append(f"{key} = {value}")
+    participant_names = [p["name"] for p in participants]
 
-        # Copy participant environment variables if present
-        role_env = role.get("environment", [])
-        if role_env:
-            lines.append("")
-            for var in role_env:
-                lines.append(f"[[participants.environment]]")
-                lines.append(f"name = \"{var['name']}\"")
-                if "default" in var:
-                    lines.append(f"default = \"{var['default']}\"")
+    participant_services = "\n".join([
+        PARTICIPANT_TEMPLATE.format(
+            name=p["name"],
+            image=p["image"],
+            port=DEFAULT_PORT,
+            env=format_env_vars(p.get("env", {}))
+        )
+        for p in participants
+    ])
 
-        lines.append("")
+    all_services = ["green-agent"] + participant_names
 
-    # Preserve any additional configuration sections from the original TOML
-    # Skip the known sections (green_agent, participants) and copy everything else
-    known_sections = {"green_agent", "participants"}
-    for section_name, section_value in config.items():
-        if section_name not in known_sections:
-            lines.append(f"[{section_name}]")
-            if isinstance(section_value, dict):
-                for key, value in section_value.items():
-                    if isinstance(value, str):
-                        lines.append(f"{key} = \"{value}\"")
-                    elif isinstance(value, bool):
-                        lines.append(f"{key} = {str(value).lower()}")
-                    elif isinstance(value, (int, float)):
-                        lines.append(f"{key} = {value}")
-                    elif isinstance(value, list):
-                        # Handle arrays
-                        lines.append(f"{key} = {value}")
-            lines.append("")
+    return COMPOSE_TEMPLATE.format(
+        green_image=green["image"],
+        green_port=DEFAULT_PORT,
+        green_env=format_env_vars(green.get("env", {})),
+        green_depends=format_depends_on(participant_names),
+        participant_services=participant_services,
+        client_depends=format_depends_on(all_services)
+    )
 
-    return "\n".join(lines)
+
+def generate_a2a_scenario(scenario: dict[str, Any]) -> str:
+    green = scenario["green_agent"]
+    participants = scenario.get("participants", [])
+
+    participant_lines = []
+    for p in participants:
+        participant_lines.append(
+            f"[[participants]]\n"
+            f"role = \"{p['name']}\"\n"
+            f"endpoint = \"http://{p['name']}:{DEFAULT_PORT}\"\n"
+            f"agentbeats_id = \"{p['agentbeats_id']}\"\n"
+        )
+
+    config_section = scenario.get("config", {})
+    config_lines = ["[config]"]
+    for key, value in config_section.items():
+        if isinstance(value, str):
+            config_lines.append(f"{key} = \"{value}\"")
+        else:
+            config_lines.append(f"{key} = {value}")
+
+    return A2A_SCENARIO_TEMPLATE.format(
+        green_port=DEFAULT_PORT,
+        green_id=green["agentbeats_id"],
+        participants="\n".join(participant_lines),
+        config="\n".join(config_lines)
+    )
+
+
+def generate_env_file(scenario: dict[str, Any]) -> str:
+    green = scenario["green_agent"]
+    participants = scenario.get("participants", [])
+
+    secrets = set()
+
+    # Extract secrets from ${VAR} patterns in env values
+    env_var_pattern = re.compile(r'\$\{([^}]+)\}')
+
+    for value in green.get("env", {}).values():
+        for match in env_var_pattern.findall(str(value)):
+            secrets.add(match)
+
+    for p in participants:
+        for value in p.get("env", {}).values():
+            for match in env_var_pattern.findall(str(value)):
+                secrets.add(match)
+
+    if not secrets:
+        return ""
+
+    lines = []
+    for secret in sorted(secrets):
+        lines.append(f"{secret}=")
+
+    return "\n".join(lines) + "\n"
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Generate Docker Compose configuration from scenario TOML"
-    )
-    parser.add_argument(
-        "toml_path",
-        type=Path,
-        help="Path to scenario.toml file"
-    )
-    parser.add_argument(
-        "--output-dir",
-        type=Path,
-        default=Path.cwd(),
-        help="Directory to write output files (default: current directory)"
-    )
-
+    parser = argparse.ArgumentParser(description="Generate Docker Compose from scenario.toml")
+    parser.add_argument("--scenario", type=Path)
     args = parser.parse_args()
 
-    # Validate input file exists
-    if not args.toml_path.exists():
-        print(f"Error: TOML file not found: {args.toml_path}")
+    if not args.scenario.exists():
+        print(f"Error: {args.scenario} not found")
         sys.exit(1)
 
-    # Create output directory if it doesn't exist
-    args.output_dir.mkdir(parents=True, exist_ok=True)
+    scenario = parse_scenario(args.scenario)
 
-    # Parse and validate config
-    print(f"Reading configuration from {args.toml_path}")
-    config = parse_toml(args.toml_path)
-    validate_config(config)
+    with open(COMPOSE_PATH, "w") as f:
+        f.write(generate_docker_compose(scenario))
 
-    # Generate docker-compose.yml
-    compose_content = generate_docker_compose(config)
-    compose_path = args.output_dir / "docker-compose.yml"
-    print(f"Writing {compose_path}")
-    with open(compose_path, "w") as f:
-        f.write(compose_content)
+    with open(A2A_SCENARIO_PATH, "w") as f:
+        f.write(generate_a2a_scenario(scenario))
 
-    # Generate runner-scenario.toml
-    runner_scenario_content = generate_runner_scenario(config)
-    runner_scenario_path = args.output_dir / "runner-scenario.toml"
-    print(f"Writing {runner_scenario_path}")
-    with open(runner_scenario_path, "w") as f:
-        f.write(runner_scenario_content)
-
-    # Generate .env.example (if there are any required env vars)
-    env_content = generate_env_example(config)
-    if env_content.strip():
-        env_path = args.output_dir / ".env.example"
-        print(f"Writing {env_path}")
-        with open(env_path, "w") as f:
+    env_content = generate_env_file(scenario)
+    if env_content:
+        with open(ENV_PATH, "w") as f:
             f.write(env_content)
+        print(f"Generated {ENV_PATH}")
 
-    print("\nSuccess! Generated files:")
-    print(f"  - {compose_path}")
-    print(f"  - {runner_scenario_path}")
-    if env_content.strip():
-        print(f"  - {env_path}")
-    print("\nNext steps:")
-    print("  1. Review the generated docker-compose.yml")
-    if env_content.strip():
-        print("  2. Copy .env.example to .env and fill in required values")
-        print("  3. Run: docker-compose up")
-    else:
-        print("  2. Run: docker-compose up")
-
+    print(f"Generated {COMPOSE_PATH} and {A2A_SCENARIO_PATH}")
 
 if __name__ == "__main__":
     main()

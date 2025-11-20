@@ -1,0 +1,83 @@
+name: Run Scenario
+
+on:
+  push:
+    paths:
+      - 'scenario.toml'
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install tomli
+
+      - name: Generate docker-compose.yml and .env.example
+        run: python generate_compose.py --scenario scenario.toml
+
+      - name: Export all secrets as environment variables
+        env:
+          SECRETS_JSON: ${{ toJSON(secrets) }}
+        run: |
+          echo "$SECRETS_JSON" | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' > .env
+
+      - name: Run assessment
+        run: docker compose up --abort-on-container-exit
+
+      - name: Generate submission metadata
+        id: metadata
+        run: |
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          USERNAME=${{ github.repository_owner }}
+          SUBMISSION_DIR="submissions/${USERNAME}/${TIMESTAMP}"
+          echo "submission_dir=$SUBMISSION_DIR" >> $GITHUB_OUTPUT
+          echo "branch_name=submission-${USERNAME}-${TIMESTAMP}" >> $GITHUB_OUTPUT
+
+      - name: Copy files to submission directory
+        run: |
+          mkdir -p ${{ steps.metadata.outputs.submission_dir }}
+          cp scenario.toml ${{ steps.metadata.outputs.submission_dir }}/
+          cp output/results.json ${{ steps.metadata.outputs.submission_dir }}/
+
+      - name: Create submission branch from main
+        run: |
+          git fetch origin main
+          git checkout -b ${{ steps.metadata.outputs.branch_name }} origin/main
+
+      - name: Commit results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          COMMIT_MSG="Submission for ${{ github.repository_owner }}
+
+Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+          git add ${{ steps.metadata.outputs.submission_dir }}
+          git commit -m "$COMMIT_MSG"
+          git push origin ${{ steps.metadata.outputs.branch_name }}
+
+      - name: Create Pull Request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --base main \
+            --head ${{ steps.metadata.outputs.branch_name }} \
+            --title "Submission: ${{ github.repository_owner }}" \
+            --body "Automated submission from workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Cleanup
+        if: always()
+        run: docker compose down -v || true
