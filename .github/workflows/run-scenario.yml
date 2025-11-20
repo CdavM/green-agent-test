@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      packages: read
+      pull-requests: write
 
     steps:
       - name: Checkout
@@ -26,14 +28,36 @@ jobs:
       - name: Generate docker-compose.yml and .env.example
         run: python generate_compose.py --scenario scenario.toml
 
+      - name: Create output directory
+        run: mkdir -p output && chmod 777 output
+
       - name: Export all secrets as environment variables
         env:
           SECRETS_JSON: ${{ toJSON(secrets) }}
         run: |
           echo "$SECRETS_JSON" | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]' > .env
 
+      - name: Check if GHCR_TOKEN is available
+        id: check_ghcr
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
+        run: |
+          if [ -n "$GHCR_TOKEN" ]; then
+            echo "has_token=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_token=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Login to GitHub Container Registry
+        if: steps.check_ghcr.outputs.has_token == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_TOKEN }}
+
       - name: Run assessment
-        run: docker compose up --abort-on-container-exit
+        run: docker compose up --exit-code-from agentbeats-client --abort-on-container-exit
 
       - name: Generate submission metadata
         id: metadata
@@ -59,13 +83,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          COMMIT_MSG="Submission for ${{ github.repository_owner }}
-
-Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-
           git add ${{ steps.metadata.outputs.submission_dir }}
-          git commit -m "$COMMIT_MSG"
+          git commit -m "Submission for ${{ github.repository_owner }}
+
+          Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           git push origin ${{ steps.metadata.outputs.branch_name }}
 
       - name: Create Pull Request

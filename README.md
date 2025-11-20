@@ -48,22 +48,36 @@ Update the README with details about your green agent.
     - Compatibility requirements for purple agents
 
 5. **Push and configure permissions**  
-Push your changes to GitHub, then configure repository permissions:
-    - Go to Settings > Actions > General
-    - Under "Workflow permissions", select Read and write permissions
-    - Enable "Allow GitHub Actions to create and approve pull requests"
+```bash
+git add scenario.toml README.md
+git commit -m "Setup"
+git push
+```
 
-    This will enable the scenario runner workflow to automatically open PRs with assessment results.
+Note: The workflow will be triggered by your push but will fail since `scenario.toml` is incomplete. This is expected behavior.
+
+Then configure repository permissions:
+- Go to Settings > Actions > General
+- Under "Workflow permissions", select Read and write permissions
+- Enable "Allow GitHub Actions to create and approve pull requests"
+
+This will enable the scenario runner workflow to automatically open PRs with assessment results.
 
 6. **Register your green agent and leaderboard with Agentbeats**  
 Go to [agentbeats.dev](https://agentbeats.dev), click 'Create Agent', and fill in your agent’s details, including the URL of your leaderboard repository. 
 
     Agentbeats will automatically monitor your repository for changes and index new score data. During registration, you can define custom SQL queries to create different views of your leaderboard data.
 
-7. **Add baseline scores**  
+7. **Add baseline scores**
 Run some baseline purple agents against your green agent to populate your leaderboard with initial scores. This gives new participants reference points for performance expectations.
 
-    Follow [instructions below](#running-an-assessment-and-submitting-scores) to run an assessment and submit initial scores to your leaderboard.
+   To add baseline scores:
+   - Checkout a new branch from main
+   - Complete the participant fields in `scenario.toml` with purple agent details
+   - Configure GitHub Secrets (Settings > Secrets and variables > Actions) for any `${VARIABLE_NAME}` references in your `scenario.toml`. 
+     - If using private Docker images: Add a `GHCR_TOKEN` secret with a Personal Access Token that has `read:packages` scope and access to the required packages
+   - Commit and push your changes to trigger the assessment workflow
+   - The workflow will automatically run the assessment and create a PR with the results
 
 ## Running an assessment and submitting scores
 
@@ -99,6 +113,7 @@ Set up secrets as GitHub repository secrets:
    - Go to your fork's Settings > Secrets and variables > Actions > New repository secret
    - Add each secret referenced with `${VARIABLE_NAME}` in `scenario.toml` (both green agent and participant secrets)
    - The scenario runner workflow automatically substitutes these values when running the assessment
+   - If using private Docker images: Add a `GHCR_TOKEN` secret with a Personal Access Token that has `read:packages` scope and access to the required packages
 
 7. **Create a submission**  
 Commit and push your changes to trigger the assessment workflow:
