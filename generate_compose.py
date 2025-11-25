@@ -42,7 +42,7 @@ services:
 
 {participant_services}
   agentbeats-client:
-    image: ghcr.io/oasislabs/agentbeats-client:v1.0.0
+    image: ghcr.io/komyo-ai/agentbeats-client:v1.0.0
     container_name: agentbeats-client
     volumes:
       - ./a2a-scenario.toml:/app/scenario.toml
