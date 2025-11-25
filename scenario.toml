@@ -1,5 +1,4 @@
 [green_agent]
-agentbeats_id = "YOUR_GREEN_AGENT_ID"
 image = "ghcr.io/yourorg/your-green-agent:version"
 env = { API_KEY = "${GITHUB_SECRET_NAME}", LOG_LEVEL = "INFO" }
 

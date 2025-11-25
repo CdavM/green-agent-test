@@ -37,7 +37,7 @@ This will enable the scenario runner workflow to push your results to a submissi
 Clone your repository and open `scenario.toml` in your favorite text editor.
 
 `scenario.toml` defines the assessment configuration. Partially fill it out to create a template for submitters:
-   - **Fill in your green agent's details**: Set `agentbeats_id`, `image`, and `env` variables
+   - **Fill in your green agent's details**: Set `image`, and `env` variables
      - For environment variables: use `${VARIABLE_NAME}` syntax for secrets (e.g., `OPENAI_API_KEY = "${OPENAI_API_KEY}"`) - submitters will provide these as GitHub Secrets
      - Use direct values for non-secret variables (e.g., `LOG_LEVEL = "INFO"`)
    - **Define participant template**: Create a `[[participants]]` section for each role your assessment expects 
