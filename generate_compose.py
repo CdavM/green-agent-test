@@ -74,7 +74,6 @@ PARTICIPANT_TEMPLATE = """  {name}:
 
 A2A_SCENARIO_TEMPLATE = """[green_agent]
 endpoint = "http://green-agent:{green_port}"
-agentbeats_id = "{green_id}"
 
 {participants}
 {config}"""
@@ -163,7 +162,6 @@ def generate_a2a_scenario(scenario: dict[str, Any]) -> str:
 
     return A2A_SCENARIO_TEMPLATE.format(
         green_port=DEFAULT_PORT,
-        green_id=green["agentbeats_id"],
         participants="\n".join(participant_lines),
         config="\n".join(config_lines)
     )
