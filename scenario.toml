@@ -1,6 +1,6 @@
 [green_agent]
 image = "ghcr.io/cdavm/green-debate-judge:v1.0"
-env = { API_KEY = "${GITHUB_SECRET_NAME}", LOG_LEVEL = "INFO" }
+env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", LOG_LEVEL = "INFO" }
 
 [[participants]]
 agentbeats_id = "019ac01a-928e-7840-9c4c-b94f9131a355"
