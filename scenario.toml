@@ -15,5 +15,5 @@ image = "ghcr.io/cdavm/purple-debate-con:v1.0"
 env = {}
 
 [config]
-topic = "Should houses have steeper roofs?"
+topic = "Should houses have steeper roofs or not?"
 num_rounds = 2
