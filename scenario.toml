@@ -3,7 +3,7 @@ image = "ghcr.io/cdavm/green-tau:v1.0"
 env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", LOG_LEVEL = "INFO" }
 
 [[participants]]
-agentbeats_id = "019adf8f-4fa6-7573-b543-8e555bc10947"
+agentbeats_id = "019ae3cc-00cc-73b1-a4e7-8df686b76452"
 name = "worker"
 image = "ghcr.io/cdavm/purple-tau:v1.0"
 env = { GOOGLE_API_KEY = "${GOOGLE_API_KEY}", OPENAI_API_KEY = "${OPENAI_API_KEY}" }
