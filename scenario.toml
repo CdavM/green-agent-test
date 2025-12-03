@@ -1,6 +1,6 @@
 [green_agent]
 image = "ghcr.io/cdavm/green-tau:v1.0"
-env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", LOG_LEVEL = "INFO" }
+env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", LOG_LEVEL = "INFO"}
 
 [[participants]]
 agentbeats_id = "019ae3cc-00cc-73b1-a4e7-8df686b76452"
