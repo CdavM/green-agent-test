@@ -1,10 +1,10 @@
 [green_agent]
 image = "ghcr.io/cdavm/green-tau:v1.0"
-env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", LOG_LEVEL = "INFO"}
+env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", OPENAI_API_KEY = "${OPENAI_API_KEY}", LOG_LEVEL = "INFO"}
 
 [[participants]]
-agentbeats_id = "019ae3cc-00cc-73b1-a4e7-8df686b76452"
-name = "worker"
+agentbeats_id = "019c7181-454c-75e0-84d6-a1dc8b158c5b"
+name = "agent"
 image = "ghcr.io/cdavm/purple-tau:v1.0"
 env = { GOOGLE_API_KEY = "${GOOGLE_API_KEY}", OPENAI_API_KEY = "${OPENAI_API_KEY}" }
 
