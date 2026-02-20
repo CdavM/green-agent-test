@@ -1,17 +1,14 @@
+[config]
+
 [green_agent]
-image = "ghcr.io/cdavm/green-tau:v1.0"
-env = { API_KEY = "${GITHUB_SECRET_NAME}", GOOGLE_API_KEY = "${GOOGLE_API_KEY}", OPENAI_API_KEY = "${OPENAI_API_KEY}", LOG_LEVEL = "INFO"}
+agentbeats_id = "019c7b74-4444-7b32-9b78-0f5778529c3c"
+
+[green_agent.env]
 
 [[participants]]
-agentbeats_id = "019c7181-454c-75e0-84d6-a1dc8b158c5b"
-name = "agent"
-image = "ghcr.io/cdavm/purple-tau:v1.0"
-env = { GOOGLE_API_KEY = "${GOOGLE_API_KEY}", OPENAI_API_KEY = "${OPENAI_API_KEY}" }
+agentbeats_id = "019c7ac7-e78f-7c90-9d0a-403054e04331"
+name = "agent1"
 
-# Tau2 Benchmark Scenario
-[config]
-domain = "airline"
-agent_llm = "gpt-4.1"
-user_llm = "gpt-4.1"
-num_trials = 1
-num_tasks = 5
+[participants.env]
+a = "${a}"
+c = "${c}"
